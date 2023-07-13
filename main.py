@@ -98,7 +98,7 @@ class ClientHandler(threading.Thread):
             if not validate_time_format(new_time_format):
                 error_msg = messages['invalid_time_format'].format(new_time_format)
                 print_message('error', error_msg)
-                self.client_socket.send(format(error_msg).encode('utf-8'))
+                self.client_socket.send(format(error_msg + '\r\n').encode('utf-8'))
                 new_time_format = self.receive_data()
             else:
                 self.time_format = new_time_format
