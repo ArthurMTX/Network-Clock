@@ -8,6 +8,7 @@ from pyreadline3 import Readline
 readline = Readline()
 time_format = ''
 port = 1234
+server_socket = None
 
 messages = {
     'success': '\033[92m [✓] {}\033[0m',
@@ -192,7 +193,8 @@ class ClientHandler(threading.Thread):
                     return
 
 
-def run_server(default_time_format):
+def open_socket():
+    global server_socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     ip_address = socket.gethostbyname(socket.gethostname())
     server_address = (ip_address, port)
@@ -220,6 +222,38 @@ def run_server(default_time_format):
     finally:
         print_message('info', messages['server_socket_closed'])
         server_socket.close()
+
+
+def send_current_time_loop():
+    while True:
+        if server_socket is None:
+            current_time = get_current_time(default_time_format)
+            print_message('info', messages['current_time'].format(current_time))
+        time.sleep(1)
+
+
+def run_server(default_time_format):
+    mode = get_server_mode()
+    if mode == 'online':
+        open_socket_thread = threading.Thread(target=open_socket)
+        open_socket_thread.start()
+
+    send_time_thread = threading.Thread(target=send_current_time_loop)
+    send_time_thread.start()
+
+    if mode == 'online':
+        open_socket_thread.join()
+
+    send_time_thread.join()
+
+
+def get_server_mode():
+    while True:
+        mode = input("Select server mode (online/offline): ").lower()
+        if mode in ['online', 'offline']:
+            return mode
+        else:
+            print("Invalid server mode. Please choose 'online' or 'offline'.")
 
 
 if __name__ == '__main__':
