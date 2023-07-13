@@ -29,6 +29,7 @@ messages = {
     'help_sent': 'Help sent to the client: {}:{}',
     'current_time': 'Current time: {}',
     'server_listening': 'Server is listening on {}:{}',
+    'cant_decode': 'Couldn\'t decode received data, is socket closed?'
 }
 
 
@@ -70,11 +71,15 @@ class ClientHandler(threading.Thread):
         while True:
             try:
                 char = self.client_socket.recv(1).decode('utf-8')
-            except UnicodeDecodeError as e:
-                error_msg = messages['invalid_character'].format(str(e))
-                print_message('error', error_msg)
-                self.client_socket.send(format('\r\n' + error_msg).encode('utf-8'))
-                self.client_socket.close()
+            except OSError as e:
+                if e.errno == 10038:
+                    print_message('error', messages['cant_decode'])
+                    break
+                else:
+                    error_msg = messages['invalid_character'].format(str(e))
+                    print_message('error', error_msg)
+                    self.client_socket.send(format('\r\n' + error_msg).encode('utf-8'))
+                    self.client_socket.close()
             if char == '\n':
                 break
             received_data += char
@@ -82,9 +87,15 @@ class ClientHandler(threading.Thread):
         return received_data
 
     def send_current_time(self, time_format):
-        current_time = get_current_time(time_format)
-        self.client_socket.send('{}\r\n'.format(current_time).encode('utf-8'))
-        print_message('success', messages['current_time_sent'].format(*self.client_address, current_time))
+        try:
+            current_time = get_current_time(time_format)
+            self.client_socket.send('{}\r\n'.format(current_time).encode('utf-8'))
+            print_message('success', messages['current_time_sent'].format(*self.client_address, current_time))
+        except OSError as e:
+            if e.errno == 10038:
+                print_message('error', messages['cant_decode'])
+            else:
+                raise e
 
     def handle_change_format(self):
         self.client_socket.send(format('\r\n' + explanation_message).encode('utf-8'))
@@ -150,23 +161,35 @@ class ClientHandler(threading.Thread):
                     last_check_time = current_time
                     self.send_current_time(self.time_format)
 
-                if select.select([self.client_socket], [], [], 0)[0]:
-                    char = self.client_socket.recv(1).decode('utf-8')
+                try:
+                    if select.select([self.client_socket], [], [], 0)[0]:
+                        char = self.client_socket.recv(1).decode('utf-8')
 
-                    actions = {
-                        'c': self.handle_change_format,
-                        'q': self.handle_disconnect,
-                        'h': self.handle_help,
-                        '\n': None
-                    }
+                        actions = {
+                            'c': self.handle_change_format,
+                            'q': self.handle_disconnect,
+                            'h': self.handle_help,
+                            '\n': None
+                        }
 
-                    action_func = actions.get(char)
-                    if action_func is not None:
-                        action_func()
+                        action_func = actions.get(char)
+                        if action_func is not None:
+                            action_func()
+                            if char == 'q':
+                                return
+                        else:
+                            error_msg = '\r\n' + messages['invalid_action'].format(char)
+                            print_message('error', error_msg)
+                            self.client_socket.send(format(error_msg).encode('utf-8'))
+                except OSError as e:
+                    if e.errno == 10038:
+                        print_message('error', messages['cant_decode'])
+                        return
                     else:
-                        error_msg = '\r\n' + messages['invalid_action'].format(char)
-                        print_message('error', error_msg)
-                        self.client_socket.send(format(error_msg).encode('utf-8'))
+                        raise e
+                except ValueError:
+                    print_message('error', messages['cant_decode'])
+                    return
 
 
 def run_server(default_time_format):
