@@ -3,9 +3,7 @@ import socket
 import time
 import select
 import threading
-from pyreadline3 import Readline
 
-readline = Readline()
 time_format = ''
 port = 1234
 server_socket = None
@@ -24,6 +22,7 @@ messages = {
     'no_time_format_provided': 'No time format provided, using default ({})',
     'current_time_sent': 'Current time sent to the client - ip: {} port: {} time: {}',
     'time_format_requested': 'Time format requested by the client: {}',
+    'time_format_changed': 'Time format changed to: {}',
     'connection_established': 'Connection established with {}:{}',
     'new_time_format': 'New time format requested by the client: {}',
     'client_disconnected': 'Client {}:{} disconnected.',
@@ -99,22 +98,25 @@ class ClientHandler(threading.Thread):
                 raise e
 
     def handle_change_format(self):
-        self.client_socket.send(format('\r\n' + explanation_message).encode('utf-8'))
-        new_time_format = self.receive_data()
-
         while True:
+            self.client_socket.send(format('\r\n' + explanation_message).encode('utf-8'))
+            new_time_format = self.receive_data()
+
             if new_time_format.strip() == '':
                 new_time_format = self.default_time_format
                 print_message('warning', messages['no_time_format_provided'].format(new_time_format))
+                self.client_socket.send('{}\r\n'.format(messages['no_time_format_provided']
+                                                        .format(new_time_format)).encode('utf-8'))
 
             if not validate_time_format(new_time_format):
                 error_msg = messages['invalid_time_format'].format(new_time_format)
                 print_message('error', error_msg)
                 self.client_socket.send(format(error_msg + '\r\n').encode('utf-8'))
-                new_time_format = self.receive_data()
             else:
                 self.time_format = new_time_format
                 print_message('success', messages['new_time_format'].format(self.time_format))
+                self.client_socket.send('{}\r\n'.format(messages['time_format_changed']
+                                                        .format(self.time_format)).encode('utf-8'))
                 break
 
     def handle_disconnect(self):
@@ -181,7 +183,7 @@ class ClientHandler(threading.Thread):
                         else:
                             error_msg = '\r\n' + messages['invalid_action'].format(char)
                             print_message('error', error_msg)
-                            self.client_socket.send(format(error_msg).encode('utf-8'))
+                            self.client_socket.send('{}\r\n'.format(error_msg).encode('utf-8'))
                 except OSError as e:
                     if e.errno == 10038:
                         print_message('error', messages['cant_decode'])
@@ -232,7 +234,7 @@ def send_current_time_loop():
         time.sleep(1)
 
 
-def run_server(default_time_format):
+def run_server():
     mode = get_server_mode()
     if mode == 'online':
         open_socket_thread = threading.Thread(target=open_socket)
@@ -276,4 +278,4 @@ if __name__ == '__main__':
          q - to disconnect\n\r \
          h - to get help\n\r'
 
-    run_server(default_time_format)
+    run_server()
