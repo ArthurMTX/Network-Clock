@@ -268,12 +268,14 @@ class ClientHandler(threading.Thread):
                         # Read one character from client
                         char = self.client_socket.recv(1).decode('utf-8')
 
+                        if char == '\r' or char == '\n':
+                            continue
+
                         # Existing commands
                         commands = {
                             'c': self.handle_change_format,
                             'q': self.handle_disconnect,
                             'h': self.handle_help,
-                            '\n': None
                         }
 
                         # Link between character and function
@@ -416,6 +418,9 @@ def handle_server_commands():
             if msvcrt.kbhit():
                 # Get command and decode it
                 command = msvcrt.getch().decode()
+
+                if command == '\r' or command == '\n':
+                    continue
 
                 # If command not in commands, print error message
                 if command not in commands:
