@@ -14,6 +14,8 @@ import threading  # Threading
 
 time_format = ''  # Time format
 port = 1234  # Default port
+max_connections = 10  # Maximum number of connections
+connected_clients = []  # Connected clients
 server_socket = None  # Server socket
 default_time_format = '%Y-%m-%d %H:%M:%S'  # Default time format
 verbose_mode = True  # Verbose mode
@@ -90,6 +92,12 @@ messages = {
     'error_while_changing_time': 'Error occurred while changing server\'s time: {}',
     'time_changed': 'Server\'s time changed to: {}',
     'time_not_changed': 'Server\'s time not changed',
+    'time_change_canceled': 'Time change canceled',
+    'confirm_time_change': 'Are you sure you want to change server\'s time to {}? (y/n)',
+    'sending_message_to_clients': 'Sending message to all clients: {}',
+    'error_sending_message_to_clients': 'Error occurred while sending message to clients: {}',
+    'message_sent_to_clients': 'Message sent to all clients: {}',
+    'no_clients_connected': 'No clients connected',
 }
 
 
@@ -209,6 +217,7 @@ class ClientHandler(threading.Thread):
     # Handle client disconnection, send goodbye message and close socket and print success message server-side
     def handle_disconnect(self):
         self.client_socket.send(format('\r\n' + 'Goodbye!').encode('utf-8'))
+        connected_clients.remove(self.client_socket)
         print_message('info', messages['client_disconnected'].format(*self.client_address))
         self.client_socket.close()
 
@@ -219,6 +228,7 @@ class ClientHandler(threading.Thread):
 
     # Handle first client connection, receive action from client and handle it
     def handle_client_connection(self):
+        connected_clients.append(self.client_socket)
         # Send explanation message to client
         self.client_socket.send(format(explanation_message).encode('utf-8'))
 
@@ -268,6 +278,7 @@ class ClientHandler(threading.Thread):
                         # Read one character from client
                         char = self.client_socket.recv(1).decode('utf-8')
 
+                        # If command is enter or return, ignore it
                         if char == '\r' or char == '\n':
                             continue
 
@@ -307,6 +318,7 @@ class ClientHandler(threading.Thread):
 # Open socket and listen for connections, handle each connection in a new thread
 def open_socket():
     global server_socket
+    global max_connections
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # Create a TCP/IP socket
     ip_address = socket.gethostbyname(socket.gethostname())  # Get local machine name
     server_address = (ip_address, port)  # Bind the socket to the port
@@ -315,11 +327,19 @@ def open_socket():
     print_message('info', messages['current_time'].format(get_current_time(default_time_format)))
     print_message('info', messages['server_listening'].format(*server_address))
 
+    connection_count = 0  # Counter for accepted connections
+
     try:
         while True:
             print_message('info', 'Waiting for a connection...')
-            # Accept incomings connections
+            if connection_count >= max_connections:
+                print_message('info', 'Maximum connections reached. Not accepting new connections.')
+                break
+
+            # Accept incoming connection
             client_socket, client_address = server_socket.accept()
+            connection_count += 1
+
             print_message('success', messages['connection_established'].format(*client_address))
 
             try:
@@ -334,10 +354,12 @@ def open_socket():
         # If keyboard interrupt, close socket and exit
         print_message('info', messages['keyboard_interrupt'])
         server_socket.close()
+        sys.exit(0)
     finally:
         # If any other error, close socket and exit
         print_message('info', messages['server_socket_closed'])
         server_socket.close()
+        sys.exit(1)
 
 
 # Run server, open socket and listen for connections
@@ -409,7 +431,8 @@ def handle_server_commands():
         'v': toggle_verbose_mode,
         'q': quit_server,
         'c': change_system_date_and_time,
-        'h': print_help_message
+        'h': print_help_message,
+        'm': print_message_to_clients
     }
 
     while True:
@@ -419,6 +442,7 @@ def handle_server_commands():
                 # Get command and decode it
                 command = msvcrt.getch().decode()
 
+                # If command is enter or return, ignore it
                 if command == '\r' or command == '\n':
                     continue
 
@@ -455,7 +479,12 @@ def quit_server():
 # Change server date and time and validate it
 def change_system_date_and_time():
     # Ask for new time
-    new_time = input("Enter new time (HH:MM:SS): ").strip()
+    new_time = input("Enter new time (HH:MM:SS) (leave blank to use current time and use c to cancel): ").strip()
+
+    # If cancel, return
+    if new_time == 'c':
+        print_message('info', messages['time_change_canceled'])
+        return
 
     # If no time provided, get current time and print warning message
     # If time provided, validate it
@@ -468,7 +497,12 @@ def change_system_date_and_time():
             return
 
     # Ask for new date
-    new_date = input("Enter new date (MM-DD-YYYY): ").strip()
+    new_date = input("Enter new date (MM-DD-YYYY) (leave blank to use current date and use c to cancel): ").strip()
+
+    # If cancel, return
+    if new_date == 'c':
+        print_message('info', messages['time_change_canceled'])
+        return
 
     # If no date provided, get current date and print warning message
     # If date provided, validate it
@@ -482,6 +516,16 @@ def change_system_date_and_time():
 
     # Combine date and time and print message
     new_time = '{} {}'.format(new_date, new_time)
+
+    # Ask for confirmation
+    confirmation = input(messages['confirm_time_change'].format(new_time)).strip()
+
+    # If confirmation is not y, return
+    if confirmation != 'y':
+        print_message('info', messages['time_change_canceled'])
+        return
+
+    # User confirmed, change time
     print_message('info', messages['changing_time'].format(new_time))
     change_time(new_time)
 
@@ -489,6 +533,37 @@ def change_system_date_and_time():
 # Print help message
 def print_help_message():
     print_message('info', help_message_server)
+
+
+def send_message_to_clients(message):
+    global server_socket
+
+    if not connected_clients:
+        print_message('error', messages['no_clients_connected'])
+        return
+
+    # Get all connected clients
+    for client_socket in connected_clients:
+        try:
+            # Send message to client
+            client_socket.send('{}\r\n'.format(message).encode())
+        except Exception as e:
+            # If error, print it and close socket
+            print_message('error', messages['error_sending_message_to_clients'].format(e))
+            client_socket.close()
+
+    # Afficher un message pour indiquer que le message a été envoyé à tous les clients
+    print_message('info', messages['message_sent_to_clients'].format(message))
+
+
+def print_message_to_clients():
+    message = input("Enter message to send to clients: ").strip()
+    if message == '':
+        print_message('error', messages['no_message_provided'])
+        return
+
+    print_message('info', messages['sending_message_to_clients'].format(message))
+    send_message_to_clients(message)
 
 
 # Welcome message server-side, ask for mode and run it
