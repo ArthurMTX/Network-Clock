@@ -1,18 +1,22 @@
-import datetime
-import msvcrt
-import re
-import socket
-import subprocess
-import time
-import select
-import threading
-import sys
+############## IMPORTS ##############
+import sys  # System
+import datetime  # Date and time
+import msvcrt  # Keyboard input
+import re  # Regular expressions
+import socket  # Socket
+import subprocess  # Run commands
+import time  # Time
+import select  # Select (for non-blocking sockets)
+import threading  # Threading
 
-time_format = ''
-port = 1234
-server_socket = None
-default_time_format = '%Y-%m-%d %H:%M:%S'
-verbose_mode = True
+############## GLOBAL VARIABLES ##############
+time_format = ''  # Time format
+port = 1234  # Default port
+server_socket = None  # Server socket
+default_time_format = '%Y-%m-%d %H:%M:%S'  # Default time format
+verbose_mode = True  # Verbose mode
+
+############## MESSAGES ##############
 welcome_message = 'Welcome to NC Time Server!\n\r'
 ascii_art = (
     "ooooo      ooo   .oooooo.   \r\n"
@@ -86,12 +90,17 @@ messages = {
 }
 
 
+############## FUNCTIONS ##############
+
+# Print message with color and special symbols (if supported)
 def print_message(message_key, *args):
     message = messages.get(message_key)
     if message:
         print(message.format(*args))
 
 
+# Validate time format string, check if it contains any valid format
+# returns True if valid, False otherwise
 def validate_time_format(format_string):
     valid_formats = [
         '%Y', '%m', '%d', '%H', '%M', '%S', '%y', '%b', '%B', '%a', '%A', '%p'
@@ -102,29 +111,35 @@ def validate_time_format(format_string):
     return False
 
 
+# Get current time in given format and return it
 def get_current_time(format_string):
     current_time = datetime.datetime.now()
     return datetime.datetime.strftime(current_time, format_string)
 
 
+# Client handler class, handles client connection and communication
 class ClientHandler(threading.Thread):
     def __init__(self, client_socket, client_address, default_time_format):
         super().__init__()
-        self.client_socket = client_socket
-        self.client_address = client_address
-        self.default_time_format = default_time_format
-        self.time_format = default_time_format
+        self.client_socket = client_socket  # client socket
+        self.client_address = client_address  # client address
+        self.default_time_format = default_time_format  # default time format
+        self.time_format = default_time_format  # current time format
 
+    # Handle client connection
     def run(self):
         self.handle_client_connection()
 
+    # Read data from client and return when newline is received
     def receive_data(self):
         received_data = ''
         char = ''
         while True:
             try:
+                # Receive one character at a time
                 char = self.client_socket.recv(1).decode('utf-8')
             except OSError as e:
+                # Error 10038 - socket closed or disconnected
                 if e.errno == 10038:
                     print_message('error', messages['cant_decode'])
                     break
@@ -133,24 +148,34 @@ class ClientHandler(threading.Thread):
                     print_message('error', error_msg)
                     self.client_socket.send(format('\r\n' + error_msg).encode('utf-8'))
                     self.client_socket.close()
+
+            # If newline received, break and return received data
             if char == '\n':
                 break
             received_data += char
 
         return received_data
 
+    # Send time to client in given format (or default if not provided)
     def send_current_time(self, time_format):
         try:
+            # Fetch current format
             current_time = get_current_time(time_format)
+
+            # Send current time to client
             self.client_socket.send('{}\r\n'.format(current_time).encode('utf-8'))
+
+            # Print message server-side if verbose mode enabled
             if verbose_mode:
                 print_message('success', messages['current_time_sent'].format(*self.client_address, current_time))
         except OSError as e:
+            # Error 10038 - socket closed or disconnected
             if e.errno == 10038:
                 print_message('error', messages['cant_decode'])
             else:
                 raise e
 
+    # Handle change format action, receive new format from client and change it (if valid)
     def handle_change_format(self):
         while True:
             self.client_socket.send(format('\r\n' + explanation_message).encode('utf-8'))
