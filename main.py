@@ -41,14 +41,17 @@ help_message_client = 'Enter: \n\r \
      q - to disconnect\n\r \
      h - to get help\n\r'
 help_message_server = 'Enter: \n\r \
-     v - to toggle verbose mode\n\r \
+     v - to toggle verbose mode (less/more output)\n\r \
+     c - to change server\'s time\n\r \
      q - to quit\n\r \
+     m - to send message to all clients\n\r \
      h - to get help\n\r'
 messages = {
     'success': '\033[92m [✓] {}\033[0m',
     'error': '\033[91m [x] {}\033[0m',
     'info': '\033[94m [i] {}\033[0m',
     'warning': '\033[93m [!] {}\033[0m',
+    'chat': '\033[95m [c] {}\033[0m',
     'yellow': '\033[93m {}\033[0m',
     'red': '\033[91m {}\033[0m',
     'invalid_time_format': 'Invalid time format: {}',
@@ -77,6 +80,9 @@ messages = {
     'invalid_time': 'Invalid time: {}',
     'invalid_date': 'Invalid date: {}',
     'changing_time': 'Changing server\'s time to: {}',
+    'error_while_changing_time': 'Error occurred while changing server\'s time: {}',
+    'time_changed': 'Server\'s time changed to: {}',
+    'time_not_changed': 'Server\'s time not changed',
 }
 
 
@@ -216,16 +222,16 @@ class ClientHandler(threading.Thread):
                     if select.select([self.client_socket], [], [], 0)[0]:
                         char = self.client_socket.recv(1).decode('utf-8')
 
-                        actions = {
+                        commands = {
                             'c': self.handle_change_format,
                             'q': self.handle_disconnect,
                             'h': self.handle_help,
                             '\n': None
                         }
 
-                        action_func = actions.get(char)
-                        if action_func is not None:
-                            action_func()
+                        commands_func = commands.get(char)
+                        if commands_func is not None:
+                            commands_func()
                             if char == 'q':
                                 return
                         else:
@@ -281,15 +287,14 @@ def run_server():
 
 
 def change_time(new_time):
-    command = ['runas', '/user:Administrator', 'python', 'time_changer.py', new_time]
-
     try:
-        subprocess.run(command, check=True)
-        print_message('success', messages['time_changed'].format(new_time))
-    except subprocess.CalledProcessError as e:
-        print_message('error', str(e))
+        subprocess.call(['python', 'time_changer.py', new_time])
+    except OSError as e:
+        error_msg = messages['error_while_changing_time'].format(str(e))
+        print(error_msg)
     except Exception as e:
-        print_message('error', str(e))
+        error_msg = messages['error_while_changing_time'].format(str(e))
+        print(error_msg)
 
 
 def validate_time(new_time):
@@ -307,13 +312,13 @@ def validate_time(new_time):
 
 
 def validate_date(new_date):
-    # check if date is in format DD/MM/YYYY
-    if not re.match(r'^([0-2][0-9]|3[0-1])/(0[1-9]|1[0-2])/[0-9]{4}$', new_date):
+    # check if date is in format MM-DD-YYYY
+    if not re.match(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$', new_date):
         return False
 
     # check if date is valid
     try:
-        datetime.datetime.strptime(new_date, '%d/%m/%Y')
+        datetime.datetime.strptime(new_date, '%m-%d-%Y')
     except ValueError:
         return False
 
@@ -327,63 +332,77 @@ def get_hours_minutes_seconds():
 
 def get_day_month_year():
     current_time = datetime.datetime.now()
-    return current_time.strftime('%d/%m/%Y').format(current_time.day, current_time.month, current_time.year)
+    return current_time.strftime('%m-%d-%Y').format(current_time.day, current_time.month, current_time.year)
 
 
 def handle_server_commands():
+    commands = {
+        'v': toggle_verbose_mode,
+        'q': quit_server,
+        'c': change_system_date_and_time,
+        'h': print_help_message
+    }
+
     while True:
         try:
             if msvcrt.kbhit():
                 command = msvcrt.getch().decode()
 
-                if not command.isalpha():
+                if command not in commands:
+                    print_message('error', messages['invalid_action'].format(command))
                     continue
 
-                if command == 'v':
-                    global verbose_mode
-                    verbose_mode = not verbose_mode
-                    if verbose_mode:
-                        print_message('info', messages['verbose_enabled'])
-                    else:
-                        print_message('info', messages['verbose_disabled'])
-                elif command == 'q':
-                    print_message('info', messages['server_socket_closing'])
-                    server_socket.close()
-                    sys.exit(0)
-                elif command == 'c':
-                    new_time = input("Enter new time (HH:MM:SS): ").strip()
+                command_handler = commands[command]
+                command_handler()
 
-                    if new_time == '':
-                        new_time = get_hours_minutes_seconds()
-                        print_message('warning', messages['no_time_provided'].format(new_time))
-                    else:
-                        if not validate_time(new_time):
-                            print_message('error', messages['invalid_time'].format(new_time))
-                            continue
-
-                    new_date = input("Enter new date (DD/MM/YYYY): ").strip()
-
-                    if new_date == '':
-                        new_date = get_day_month_year()
-                        print_message('warning', messages['no_date_provided'].format(new_date))
-                    else:
-                        if not validate_date(new_date):
-                            print_message('error', messages['invalid_date'].format(new_date))
-                            continue
-
-                    new_time = '{} {}'.format(new_date, new_time)
-                    print_message('info', messages['changing_time'].format(new_time))
-                    change_time(new_time)
-
-                elif command == 'h':
-                    print_message('info', help_message_server)
-                elif command == '\r':
-                    pass
-                else:
-                    print_message('error', messages['invalid_action'].format(command))
         except ValueError:
             print_message('error', messages['invalid_character'].format(command))
             continue
+
+
+def toggle_verbose_mode():
+    global verbose_mode
+    verbose_mode = not verbose_mode
+    if verbose_mode:
+        print_message('info', messages['verbose_enabled'])
+    else:
+        print_message('info', messages['verbose_disabled'])
+
+
+def quit_server():
+    print_message('info', messages['server_socket_closing'])
+    server_socket.close()
+    sys.exit(0)
+
+
+def change_system_date_and_time():
+    new_time = input("Enter new time (HH:MM:SS): ").strip()
+
+    if new_time == '':
+        new_time = get_hours_minutes_seconds()
+        print_message('warning', messages['no_time_provided'].format(new_time))
+    else:
+        if not validate_time(new_time):
+            print_message('error', messages['invalid_time'].format(new_time))
+            return
+
+    new_date = input("Enter new date (MM-DD-YYYY): ").strip()
+
+    if new_date == '':
+        new_date = get_day_month_year()
+        print_message('warning', messages['no_date_provided'].format(new_date))
+    else:
+        if not validate_date(new_date):
+            print_message('error', messages['invalid_date'].format(new_date))
+            return
+
+    new_time = '{} {}'.format(new_date, new_time)
+    print_message('info', messages['changing_time'].format(new_time))
+    change_time(new_time)
+
+
+def print_help_message():
+    print_message('info', help_message_server)
 
 
 def prompt_mode_selection():
