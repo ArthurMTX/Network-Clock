@@ -1,9 +1,10 @@
 ############## IMPORTS ##############
 
-import ctypes # Windows API
-import sys # System
-import datetime # Datetime
-import re # Regex
+import ctypes  # Windows API
+import sys  # System
+import datetime  # Datetime
+import re  # Regex
+
 
 ############## FUNCTIONS ##############
 
@@ -73,6 +74,7 @@ def change_system_time(new_date, new_time):
         sys.exit(1)
 
     print("System date and time changed successfully.")
+
 
 # Main function, check the arguments and call the function to change the system date and time
 if __name__ == '__main__':
