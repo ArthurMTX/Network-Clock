@@ -552,7 +552,7 @@ def send_message_to_clients(message):
             print_message('error', messages['error_sending_message_to_clients'].format(e))
             client_socket.close()
 
-    # Afficher un message pour indiquer que le message a été envoyé à tous les clients
+    # All messages sent, print message
     print_message('info', messages['message_sent_to_clients'].format(message))
 
 
