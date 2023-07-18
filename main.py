@@ -1,23 +1,35 @@
 ############## IMPORTS ##############
 
+import os  # OS
 import sys  # System
 import datetime  # Date and time
-import msvcrt  # Keyboard input
-import re  # Regular expressions
 import socket  # Socket
 import subprocess  # Run commands
-import time  # Time
 import select  # Select (for non-blocking sockets)
 import threading  # Threading
+import json  # JSON (for config file)
+import hashlib  # Hashing
 
-############## GLOBAL VARIABLES ##############
+############## CONFIGURATION ##############
+
+# Check if the config file exists
+if not os.path.isfile('config.json'):
+    sys.exit(1)
+
+# Read the config file
+config_file = open("config.json", "r")
+config = json.load(config_file)
+
+port = config["port"]  # Port
+max_connections = config["max_connections"]  # Max connections (server)
+default_time_format = config["default_time_format"]  # Default time format
+
+# Hash value of the time_changer.py file (to check if it was modified)
+stored_hash_value = "cb7147595497d359cb3d7ee454524527e5ffb37955a360101899c236f2bc5548"
 
 time_format = ''  # Time format
-port = 1234  # Default port
-max_connections = 10  # Maximum number of connections
 connected_clients = []  # Connected clients
 server_socket = None  # Server socket
-default_time_format = '%Y-%m-%d %H:%M:%S'  # Default time format
 verbose_mode = True  # Verbose mode
 
 ############## MESSAGES ##############
@@ -44,16 +56,17 @@ explanation_message = 'Enter a time format string. The following are the valid f
      Month: %B (e.g. January)\n\r \
      Day: %a (e.g. Mon)\n\r \
      Day: %A (e.g. Monday)\n\r \
-     AM/PM: %p (e.g. AM)\n\rEnter nothing to use the default time format ({})\n\r'.format(default_time_format)
+     AM/PM: %p (e.g. AM)\n\rEnter nothing to use the default time format ({}) : '.format(default_time_format)
 help_message_client = 'Enter: \n\r \
      c - to change the time format\n\r \
      q - to disconnect\n\r \
+     t - to get current time\n\r \
      h - to get help\n\r'
 help_message_server = 'Enter: \n\r \
      v - to toggle verbose mode (less/more output)\n\r \
      c - to change server\'s time\n\r \
+     t - to get current time\n\r \
      q - to quit\n\r \
-     m - to send message to all clients\n\r \
      h - to get help\n\r'
 messages = {
     'success': '\033[92m [✓] {}\033[0m',
@@ -89,7 +102,7 @@ messages = {
     'invalid_time': 'Invalid time: {}',
     'invalid_date': 'Invalid date: {}',
     'changing_time': 'Changing server\'s time to: {}',
-    'error_while_changing_time': 'Error occurred while changing server\'s time: {}',
+    'error_while_changing_time': 'Error occurred while changing server\'s time',
     'time_changed': 'Server\'s time changed to: {}',
     'time_not_changed': 'Server\'s time not changed',
     'time_change_canceled': 'Time change canceled',
@@ -102,23 +115,12 @@ messages = {
 
 
 ############## FUNCTIONS ##############
+
 # Print message with color and special symbols (if supported)
 def print_message(message_key, *args):
     message = messages.get(message_key)
     if message:
         print(message.format(*args))
-
-
-# Validate time format string, check if it contains any valid format
-# returns True if valid, False otherwise
-def validate_time_format(format_string):
-    valid_formats = [
-        '%Y', '%m', '%d', '%H', '%M', '%S', '%y', '%b', '%B', '%a', '%A', '%p'
-    ]
-    for valid_format in valid_formats:
-        if valid_format in format_string:
-            return True
-    return False
 
 
 # Get current time in given format and return it
@@ -129,12 +131,11 @@ def get_current_time(format_string):
 
 # Client handler class, handles client connection and communication
 class ClientHandler(threading.Thread):
-    def __init__(self, client_socket, client_address, default_time_format):
+    def __init__(self, client_socket, client_address, client_time_format):
         super().__init__()
         self.client_socket = client_socket  # client socket
         self.client_address = client_address  # client address
-        self.default_time_format = default_time_format  # default time format
-        self.time_format = default_time_format  # current time format
+        self.time_format = client_time_format  # client current time format
 
     # Handle client connection
     def run(self):
@@ -142,38 +143,24 @@ class ClientHandler(threading.Thread):
 
     # Read data from client and return when newline is received
     def receive_data(self):
-        received_data = ''
-        char = ''
-        while True:
-            try:
-                # Receive one character at a time
-                char = self.client_socket.recv(1).decode('utf-8')
-            except OSError as e:
-                # Error 10038 - socket closed or disconnected
-                if e.errno == 10038:
-                    print_message('error', messages['cant_decode'])
-                    break
-                else:
-                    error_msg = messages['invalid_character'].format(str(e))
-                    print_message('error', error_msg)
-                    self.client_socket.send(format('\r\n' + error_msg).encode('utf-8'))
-                    self.client_socket.close()
-
-            # If newline received, break and return received data
-            if char == '\n':
-                break
-            received_data += char
-
-        return received_data
+        try:
+            received_data = self.client_socket.recv(1024).decode('utf-8').strip()
+            return received_data
+        except OSError as e:
+            # Error 10038 - socket closed or disconnected
+            if e.errno == 10038:
+                print_message('error', messages['cant_decode'])
+            else:
+                raise e
 
     # Send time to client in given format (or default if not provided)
-    def send_current_time(self, time_format):
+    def send_current_time(self):
         try:
             # Fetch current format
-            current_time = get_current_time(time_format)
+            current_time = get_current_time(self.time_format)
 
             # Send current time to client
-            self.client_socket.send('{}\r\n'.format(current_time).encode('utf-8'))
+            self.client_socket.send('\r\n{}\r\n'.format(current_time).encode('utf-8'))
 
             # Print message server-side if verbose mode enabled
             if verbose_mode:
@@ -187,36 +174,32 @@ class ClientHandler(threading.Thread):
 
     # Handle change format action, receive new format from client and change it (if valid)
     def handle_change_format(self):
-        while True:
-            # Send the explanation message to the client
-            self.client_socket.send(format('\r\n' + explanation_message).encode('utf-8'))
+        # Send the explanation message to the client
+        self.client_socket.send(format(explanation_message).encode('utf-8'))
 
-            # Receive new time format from client
-            new_time_format = self.receive_data()
+        # Receive new time format from client
+        new_time_format = self.receive_data()
 
-            # If empty string received, use default time format
-            if new_time_format.strip() == '':
-                new_time_format = self.default_time_format
-                print_message('warning', messages['no_time_format_provided'].format(new_time_format))
-                self.client_socket.send('{}\r\n'.format(messages['no_time_format_provided']
-                                                        .format(new_time_format)).encode('utf-8'))
+        print(new_time_format.encode('utf-8').hex())
 
-            # If invalid time format received, send error message to client
-            # If valid time format received, change time format and send success message to client
-            if not validate_time_format(new_time_format):
-                error_msg = messages['invalid_time_format'].format(new_time_format)
-                print_message('error', error_msg)
-                self.client_socket.send(format(error_msg + '\r\n').encode('utf-8'))
-            else:
-                self.time_format = new_time_format
-                print_message('success', messages['new_time_format'].format(self.time_format))
-                self.client_socket.send('{}\r\n'.format(messages['time_format_changed']
-                                                        .format(self.time_format)).encode('utf-8'))
-                break
+        # If empty string received, use default time format
+        if new_time_format.strip() == '':
+            new_time_format = default_time_format
+            print_message('warning', messages['no_time_format_provided'].format(new_time_format))
+            self.client_socket.send('{}\r\n'.format(messages['no_time_format_provided']
+                                                    .format(new_time_format)).encode('utf-8'))
+
+        # Update the time format
+        self.time_format = new_time_format
+
+        # Print success message
+        print_message('success', messages['new_time_format'].format(self.time_format))
+        self.client_socket.send('{}\r\n'.format(messages['time_format_changed']
+                                                .format(self.time_format)).encode('utf-8'))
 
     # Handle client disconnection, send goodbye message and close socket and print success message server-side
     def handle_disconnect(self):
-        self.client_socket.send(format('\r\n' + 'Goodbye!').encode('utf-8'))
+        self.client_socket.send(format('\r\n' + 'Goodbye!' '\r\n').encode('utf-8'))
         connected_clients.remove(self.client_socket)
         print_message('info', messages['client_disconnected'].format(*self.client_address))
         self.client_socket.close()
@@ -234,49 +217,26 @@ class ClientHandler(threading.Thread):
 
         while True:
             # Receive initial time format from client
-            time_format = self.receive_data()
+            received_format = self.receive_data()
 
             # If empty string received, use default time format and print warning message server-side
-            if time_format.strip() == '':
-                time_format = self.default_time_format
-                print_message('warning', messages['no_time_format_provided'].format(time_format))
+            if received_format.strip() == '':
+                received_format = default_time_format
+                print_message('warning', messages['no_time_format_provided'].format(default_time_format))
 
-            # If invalid time format received, send error message to client and ask for new time format until valid
-            # If valid time format received, send current time to client and print success message server-side
-            if not validate_time_format(time_format):
-                while True:
-                    error_msg = messages['invalid_time_format'].format(time_format)
-                    print_message('error', error_msg)
-                    self.client_socket.send(format('{}\r\n'.format(error_msg)).encode('utf-8'))
+            self.time_format = received_format
 
-                    time_format = self.receive_data()
+            self.send_current_time()
+            print_message('success', messages['time_format_requested'].format(self.time_format))
 
-                    if time_format.strip() == '':
-                        time_format = self.default_time_format
-                        print_message('warning', messages['no_time_format_provided'].format(time_format))
-                        break
-
-                    if validate_time_format(time_format):
-                        break
-            else:
-                self.send_current_time(time_format)
-                print_message('success', messages['time_format_requested'].format(time_format))
-
-            # Read action from client every second and handle it
-            # Also send current time to client every second
-            last_check_time = time.time()
+            # Read action from client and handle it
             while True:
-                current_time = time.time()
-                if current_time - last_check_time >= 1:
-                    last_check_time = current_time
-                    self.send_current_time(self.time_format)
-
                 # Try to read action from client
                 try:
                     # If action received, handle it
                     if select.select([self.client_socket], [], [], 0)[0]:
                         # Read one character from client
-                        char = self.client_socket.recv(1).decode('utf-8')
+                        char = self.client_socket.recv(1024).decode('utf-8').strip()
 
                         # If command is enter or return, ignore it
                         if char == '\r' or char == '\n':
@@ -287,6 +247,7 @@ class ClientHandler(threading.Thread):
                             'c': self.handle_change_format,
                             'q': self.handle_disconnect,
                             'h': self.handle_help,
+                            't': self.send_current_time,
                         }
 
                         # Link between character and function
@@ -298,7 +259,7 @@ class ClientHandler(threading.Thread):
                             if char == 'q':
                                 return
                         else:
-                            error_msg = '\r\n' + messages['invalid_action'].format(char)
+                            error_msg = ' : ' + messages['invalid_action'].format(char)
                             print_message('error', error_msg)
                             self.client_socket.send('{}\r\n'.format(error_msg).encode('utf-8'))
                 except OSError as e:
@@ -372,21 +333,38 @@ def run_server():
 # Change time server-side, using time_changer.py
 def change_time(new_time):
     try:
-        # Run time_changer.py with new time as argument
-        subprocess.call(['python', 'time_changer.py', new_time])
+        # Get absolute paths for Python executable and time_changer.py script
+        path = os.path.dirname(os.path.abspath(__file__))
+        python_exe_path = sys.executable
+        time_changer_script_path = os.path.join(path, "time_changer.py")
+
+        # Calculate the hash of the time_changer.py file
+        with open(time_changer_script_path, 'rb') as file:
+            file_content = file.read()
+            hash_value = hashlib.sha256(file_content).hexdigest()
+
+        # Compare the hash of the time_changer.py file with the stored hash
+        if hash_value == stored_hash_value:
+            # Construct the command to execute time_changer.py
+            command = 'sudo "{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
+
+            # Execute command
+            subprocess.call(command, shell=True)
+
+            success_msg = messages['time_changed'].format(new_time)
+            print_message('success', success_msg)
+        else:
+            error_msg = messages['error_while_changing_time']
+            print_message('error', error_msg)
     except Exception as e:
-        # If any error, send error message to client and print error message server-side
-        error_msg = messages['error_while_changing_time'].format(str(e))
-        print(error_msg)
+        error_msg = messages['error_while_changing_time']
+        print_message('error', error_msg)
+        print(e)
 
 
-# Validate time format, using regex and datetime
+# Validate time format, using datetime
 # Return True if valid, False otherwise
 def validate_time(new_time):
-    # Check if time is in format HH:MM:SS
-    if not re.match(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$', new_time):
-        return False
-
     # Check if time is valid by trying to convert it to datetime
     try:
         datetime.datetime.strptime(new_time, '%H:%M:%S')
@@ -396,32 +374,16 @@ def validate_time(new_time):
     return True
 
 
-# Validate date format, using regex and datetime
+# Validate date format, using datetime
 # Return True if valid, False otherwise
 def validate_date(new_date):
-    # Check if date is in format MM-DD-YYYY
-    if not re.match(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$', new_date):
-        return False
-
     # Check if date is valid by trying to convert it to datetime
     try:
-        datetime.datetime.strptime(new_date, '%m-%d-%Y')
+        datetime.datetime.strptime(new_date, '%Y-%m-%d')
     except ValueError:
         return False
 
     return True
-
-
-# Get current time in format HH:MM:SS and return it
-def get_hours_minutes_seconds():
-    current_time = datetime.datetime.now()
-    return current_time.strftime('%H:%M:%S').format(current_time.hour, current_time.minute, current_time.second)
-
-
-# Get current date in format MM-DD-YYYY and return it
-def get_day_month_year():
-    current_time = datetime.datetime.now()
-    return current_time.strftime('%m-%d-%Y').format(current_time.day, current_time.month, current_time.year)
 
 
 # Handle server commands
@@ -432,27 +394,25 @@ def handle_server_commands():
         'q': quit_server,
         'c': change_system_date_and_time,
         'h': print_help_message,
-        'm': print_message_to_clients
+        't': print_time_to_server
     }
 
     while True:
         try:
             # If key pressed, get command and handle it
-            if msvcrt.kbhit():
-                # Get command and decode it
-                command = msvcrt.getch().decode()
+            command = input()  # Use input() instead of msvcrt.getch()
 
-                # If command is enter or return, ignore it
-                if command == '\r' or command == '\n':
-                    continue
+            # If command is empty, ignore it
+            if command.strip() == '':
+                continue
 
-                # If command not in commands, print error message
-                if command not in commands:
-                    print_message('error', messages['invalid_action'].format(command))
-                    continue
+            # If command not in commands, print error message
+            if command not in commands:
+                print_message('error', messages['invalid_action'].format(command))
+                continue
 
-                command_handler = commands[command]
-                command_handler()
+            command_handler = commands[command]
+            command_handler()
 
         except ValueError:
             print_message('error', messages['invalid_character'].format(command))
@@ -489,7 +449,7 @@ def change_system_date_and_time():
     # If no time provided, get current time and print warning message
     # If time provided, validate it
     if new_time == '':
-        new_time = get_hours_minutes_seconds()
+        new_time = datetime.datetime.now().strftime('%H:%M:%S')
         print_message('warning', messages['no_time_provided'].format(new_time))
     else:
         if not validate_time(new_time):
@@ -497,7 +457,7 @@ def change_system_date_and_time():
             return
 
     # Ask for new date
-    new_date = input("Enter new date (MM-DD-YYYY) (leave blank to use current date and use c to cancel): ").strip()
+    new_date = input("Enter new date (YYYY-MM-DD) (leave blank to use current date and use c to cancel): ").strip()
 
     # If cancel, return
     if new_date == 'c':
@@ -507,7 +467,7 @@ def change_system_date_and_time():
     # If no date provided, get current date and print warning message
     # If date provided, validate it
     if new_date == '':
-        new_date = get_day_month_year()
+        new_date = datetime.datetime.now().strftime('%Y-%m-%d')
         print_message('warning', messages['no_date_provided'].format(new_date))
     else:
         if not validate_date(new_date):
@@ -535,69 +495,9 @@ def print_help_message():
     print_message('info', help_message_server)
 
 
-def send_message_to_clients(message):
-    global server_socket
-
-    if not connected_clients:
-        print_message('error', messages['no_clients_connected'])
-        return
-
-    # Get all connected clients
-    for client_socket in connected_clients:
-        try:
-            # Send message to client
-            client_socket.send('{}\r\n'.format(message).encode())
-        except Exception as e:
-            # If error, print it and close socket
-            print_message('error', messages['error_sending_message_to_clients'].format(e))
-            client_socket.close()
-
-    # All messages sent, print message
-    print_message('info', messages['message_sent_to_clients'].format(message))
-
-
-def print_message_to_clients():
-    message = input("Enter message to send to clients: ").strip()
-    if message == '':
-        print_message('error', messages['no_message_provided'])
-        return
-
-    print_message('info', messages['sending_message_to_clients'].format(message))
-    send_message_to_clients(message)
-
-
-# Welcome message server-side, ask for mode and run it
-# If invalid mode, print error message and ask again until valid mode
-def prompt_mode_selection():
-    print(messages['yellow'].format(ascii_art))
-    print(messages['yellow'].format(welcome_message))
-
-    while True:
-        print("Select a mode:")
-        print("1. Offline (only local)")
-        print("2. Online (open a socket)")
-
-        mode = input("Enter mode number (1 or 2): ").strip()
-
-        if mode == "1":
-            print("Running in Offline mode")
-            run_offline_mode()
-            break
-        elif mode == "2":
-            print("Running in Online mode")
-            run_online_mode()
-            break
-        else:
-            print_message('error', messages['invalid_mode_selection'].format(mode))
-
-
-# Run server offline mode (without socket), print current time every second server-side
-def run_offline_mode():
-    default_time_format = '%Y-%m-%d %H:%M:%S'
-    while True:
-        current_time = get_current_time(default_time_format)
-        print_message('info', messages['current_time'].format(current_time))
-        time.sleep(1)
+# Print current time to server
+def print_time_to_server():
+    print_message('info', messages['current_time'].format(get_current_time(default_time_format)))
 
 
 # Run server online mode (with socket), open a socket and listen for connections
@@ -612,4 +512,7 @@ def run_online_mode():
 
 # Main function, ask for mode and run it either offline or online
 if __name__ == '__main__':
-    prompt_mode_selection()
+    print(messages['yellow'].format(ascii_art))
+    print(messages['yellow'].format(welcome_message))
+
+    run_online_mode()
