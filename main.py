@@ -12,8 +12,12 @@ import arrow  # Date and time
 
 ############## CONFIGURATION ##############
 
-# Check if the config file exists
-if not os.path.isfile('config.json'):
+# Check if the config file exists and is readable
+if not os.path.isfile('config.json') or not os.access('config.json', os.R_OK):
+    sys.exit(1)
+
+# Check if the time_changer.py file exists and is readable
+if not os.path.isfile('time_changer.py') or not os.access('time_changer.py', os.R_OK):
     sys.exit(1)
 
 # Read the config file
@@ -25,7 +29,7 @@ max_connections = config["max_connections"]  # Max connections (server)
 default_time_format = config["default_time_format"]  # Default time format
 
 # Hash value of the time_changer.py file (to check if it was modified)
-stored_hash_value = "d4f99c83c3fa0663df3f7483d9fa15864bf0d5776978b30d2e57e16b592c33b8"
+time_changer_hash = "3f811e31504d919dc0f3d9b70b0c13447247e22e6d596babfd2817bdf3919076"
 
 time_format = ''  # Time format
 connected_clients = []  # Connected clients
@@ -45,18 +49,18 @@ ascii_art = (
     " o8o        `8   `Y8bood8P   \r\n"
 )
 explanation_message = 'Enter a time format string. The following are the valid format strings:\n\r \
-     Year: %Y (e.g. 2018)\n\r \
-     Month: %m (e.g. 01)\n\r \
-     Day: %d (e.g. 01)\n\r \
-     Hour: %H (e.g. 01)\n\r \
-     Minute: %M (e.g. 01)\n\r \
-     Second: %S (e.g. 01)\n\r \
-     Year: %y (e.g. 18)\n\r \
-     Month: %b (e.g. Jan)\n\r \
-     Month: %B (e.g. January)\n\r \
-     Day: %a (e.g. Mon)\n\r \
-     Day: %A (e.g. Monday)\n\r \
-     AM/PM: %p (e.g. AM)\n\rEnter nothing to use the default time format ({}) : '.format(default_time_format)
+     Year: YYYY (e.g. 2018)\n\r \
+     Month: MM (e.g. 01)\n\r \
+     Day: DD (e.g. 01)\n\r \
+     Hour: HH (e.g. 01)\n\r \
+     Minute: mm (e.g. 01)\n\r \
+     Second: ss (e.g. 01)\n\r \
+     Year: YY (e.g. 18)\n\r \
+     Month: MMM (e.g. Jan)\n\r \
+     Month: MMMM (e.g. January)\n\r \
+     Day: ddd (e.g. Mon)\n\r \
+     Day: dddd (e.g. Monday)\n\r \
+     AM/PM: a (e.g. AM)\n\rEnter nothing to use the default time format ({}) : '.format(default_time_format)
 help_message_client = 'Enter: \n\r \
      c - to change the time format\n\r \
      q - to disconnect\n\r \
@@ -180,8 +184,6 @@ class ClientHandler(threading.Thread):
         # Receive new time format from client
         new_time_format = self.receive_data()
 
-        print(new_time_format.encode('utf-8').hex())
-
         # If empty string received, use default time format
         if new_time_format.strip() == '':
             new_time_format = default_time_format
@@ -260,7 +262,6 @@ class ClientHandler(threading.Thread):
                                 return
                         else:
                             error_msg = ' : ' + messages['invalid_action'].format(char)
-                            print_message('error', error_msg)
                             self.client_socket.send('{}\r\n'.format(error_msg).encode('utf-8'))
                 except OSError as e:
                     # Error 10038 - socket closed or disconnected
@@ -344,9 +345,9 @@ def change_time(new_time):
             hash_value = hashlib.sha256(file_content).hexdigest()
 
         # Compare the hash of the time_changer.py file with the stored hash
-        if hash_value == stored_hash_value:
+        if hash_value == time_changer_hash:
             # Construct the command to execute time_changer.py
-            command = 'sudo "{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
+            command = '"{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
 
             # Execute command
             subprocess.call(command, shell=True)

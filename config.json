@@ -1,5 +1,5 @@
 {
   "port" : 1234,
   "max_connections" : 10,
-  "default_time_format" : "%Y-%m-%d %H:%M:%S"
+  "default_time_format" : "YYYY-MM-DD HH:mm:ss"
 }
