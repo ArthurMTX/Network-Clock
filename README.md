@@ -53,9 +53,9 @@ All of those packages are needed to run the code :
 - [x] Removed validate_time_format()
 - [x] Fixed the decoding of inputs, 1024 bytes instead of 1
 - [x] Time isn't send every second anymore but on request
-- [x] Added administrative privileges in change_time
+- [x] Added administrative privileges in change_time()
 - [x] Added full path and hash check when calling time_changer.py
-- [x] Removed regexp in validate_format
+- [x] Removed regexp in validate_format()
 - [x] Removed get_hours_minutes_seconds() and get_day_month_year()
 - [x] Removed send_message_to_clients() and print_message_to_clients()
 - [x] Removed prompt_mode_selection() and starting both offline and online mode at the same time
