@@ -344,8 +344,6 @@ def change_time(new_time):
             file_content = file.read()
             hash_value = hashlib.sha256(file_content).hexdigest()
 
-        print(hash_value)
-
         # Compare the hash of the time_changer.py file with the stored hash
         if hash_value == time_changer_hash:
             # Construct the command to execute time_changer.py
