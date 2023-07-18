@@ -18,7 +18,7 @@ To start it, you need to open two terminals (on PowerShell), one for the server 
 All of those packages are needed to run the code :
  - os (OS)
  - sys (System)
- - datetime (Date and time)
+ - arrow (Date and time)
  - socket (Socket)
  - subprocess (Run commands)
  - select (for non-blocking sockets)
@@ -50,6 +50,7 @@ All of those packages are needed to run the code :
 
 - [x] Removed outputs and logs in admin mode
 - [x] Added capabilites with prctl
+- [x] Removed datetime and replaced it with arrow (more efficient and secure : https://snyk.io/advisor/python/arrow)
 - [x] Removed validate_time_format()
 - [x] Fixed the decoding of inputs, 1024 bytes instead of 1
 - [x] Time isn't send every second anymore but on request
