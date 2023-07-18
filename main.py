@@ -2,7 +2,6 @@
 
 import os  # OS
 import sys  # System
-import datetime  # Date and time
 import socket  # Socket
 import subprocess  # Run commands
 import select  # Select (for non-blocking sockets)
@@ -125,8 +124,8 @@ def print_message(message_key, *args):
 
 # Get current time in given format and return it
 def get_current_time(format_string):
-    current_time = datetime.datetime.now()
-    return datetime.datetime.strftime(current_time, format_string)
+    current_time = arrow.now()
+    return current_time.format(format_string)
 
 
 # Client handler class, handles client connection and communication
@@ -362,25 +361,25 @@ def change_time(new_time):
         print(e)
 
 
-# Validate time format, using datetime
+# Validate time format, using arrow
 # Return True if valid, False otherwise
 def validate_time(new_time):
-    # Check if time is valid by trying to convert it to datetime
+    # Check if time is valid by trying to convert it to arrow
     try:
-        datetime.datetime.strptime(new_time, '%H:%M:%S')
-    except ValueError:
+        arrow.get(new_time, 'HH:mm:ss')
+    except arrow.parser.ParserError:
         return False
 
     return True
 
 
-# Validate date format, using datetime
+# Validate date format, using arrow
 # Return True if valid, False otherwise
 def validate_date(new_date):
-    # Check if date is valid by trying to convert it to datetime
+    # Check if date is valid by trying to convert it to arrow
     try:
-        datetime.datetime.strptime(new_date, '%Y-%m-%d')
-    except ValueError:
+        arrow.get(new_date, 'YYYY-MM-DD')
+    except arrow.parser.ParserError:
         return False
 
     return True
@@ -449,7 +448,8 @@ def change_system_date_and_time():
     # If no time provided, get current time and print warning message
     # If time provided, validate it
     if new_time == '':
-        new_time = datetime.datetime.now().strftime('%H:%M:%S')
+        current_time = arrow.now()
+        new_time = current_time.format('HH:mm:ss')
         print_message('warning', messages['no_time_provided'].format(new_time))
     else:
         if not validate_time(new_time):
@@ -467,7 +467,8 @@ def change_system_date_and_time():
     # If no date provided, get current date and print warning message
     # If date provided, validate it
     if new_date == '':
-        new_date = datetime.datetime.now().strftime('%Y-%m-%d')
+        current_date = arrow.now().format('YYYY-MM-DD')
+        new_date = current_date
         print_message('warning', messages['no_date_provided'].format(new_date))
     else:
         if not validate_date(new_date):

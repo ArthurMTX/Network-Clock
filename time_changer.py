@@ -1,6 +1,5 @@
 ############## IMPORTS ##############
 
-import datetime  # Date and time
 import os  # Operating system
 import subprocess  # Run commands
 import sys  # System
@@ -50,10 +49,10 @@ if __name__ == '__main__':
 
     # Check if the date and time are valid
     try:
-        date = datetime.datetime.strptime(date_string, '%Y-%m-%d')
-        time = datetime.datetime.strptime(time_string, '%H:%M:%S')
-    except ValueError:
+        date = arrow.get(date_string, 'YYYY-MM-DD')
+        time = arrow.get(time_string, 'HH:mm:ss')
+    except arrow.parser.ParserError:
         sys.exit(1)
 
     secure_execution()
-    change_system_time(date, time)
+    change_system_time(date.datetime, time.datetime)
