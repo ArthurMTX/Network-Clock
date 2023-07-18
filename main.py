@@ -8,6 +8,7 @@ import select  # Select (for non-blocking sockets)
 import threading  # Threading
 import json  # JSON (for config file)
 import hashlib  # Hashing
+import arrow  # Date and time
 
 ############## CONFIGURATION ##############
 
@@ -24,7 +25,7 @@ max_connections = config["max_connections"]  # Max connections (server)
 default_time_format = config["default_time_format"]  # Default time format
 
 # Hash value of the time_changer.py file (to check if it was modified)
-stored_hash_value = "cb7147595497d359cb3d7ee454524527e5ffb37955a360101899c236f2bc5548"
+stored_hash_value = "d4f99c83c3fa0663df3f7483d9fa15864bf0d5776978b30d2e57e16b592c33b8"
 
 time_format = ''  # Time format
 connected_clients = []  # Connected clients

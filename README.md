@@ -50,7 +50,7 @@ All of those packages are needed to run the code :
 
 - [x] Removed outputs and logs in admin mode
 - [x] Added capabilites with prctl
-- [x] Removed datetime and replaced it with arrow (more efficient and secure : https://snyk.io/advisor/python/arrow)
+- [x] Removed datetime.strftime and replaced it with arrow (more efficient and secure : https://snyk.io/advisor/python/arrow)
 - [x] Removed validate_time_format()
 - [x] Fixed the decoding of inputs, 1024 bytes instead of 1
 - [x] Time isn't send every second anymore but on request
