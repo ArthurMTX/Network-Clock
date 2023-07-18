@@ -29,7 +29,7 @@ max_connections = config["max_connections"]  # Max connections (server)
 default_time_format = config["default_time_format"]  # Default time format
 
 # Hash value of the time_changer.py file (to check if it was modified)
-time_changer_hash = "3f811e31504d919dc0f3d9b70b0c13447247e22e6d596babfd2817bdf3919076"
+time_changer_hash = "ec4c6a1b1f2469d400a0f44ed6d3ca7adb69302feb7710b238d86db3ab6730a2"
 
 time_format = ''  # Time format
 connected_clients = []  # Connected clients
@@ -344,10 +344,12 @@ def change_time(new_time):
             file_content = file.read()
             hash_value = hashlib.sha256(file_content).hexdigest()
 
+        print(hash_value)
+
         # Compare the hash of the time_changer.py file with the stored hash
         if hash_value == time_changer_hash:
             # Construct the command to execute time_changer.py
-            command = '"{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
+            command = 'sudo "{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
 
             # Execute command
             subprocess.call(command, shell=True)

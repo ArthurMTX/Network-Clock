@@ -29,13 +29,6 @@ def secure_execution():
         # Define the capabilities to be limited to CAP_SYS_TIME
         prctl.cap_effective.limit(prctl.CAP_SYS_TIME)
         prctl.cap_permitted.limit(prctl.CAP_SYS_TIME)
-
-        # Check if the capabilities were limited
-        capcheck = subprocess.run(["getpcaps", str(os.getpid())], capture_output=True, text=True)
-
-        # If the capabilities were not limited, exit the program
-        if "cap_sys_time" not in capcheck.stdout.lower():
-            sys.exit(1)
     except Exception as e:
         sys.exit(1)
 
