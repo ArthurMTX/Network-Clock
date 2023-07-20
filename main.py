@@ -6,18 +6,27 @@ import socket  # Socket
 import subprocess  # Run commands
 import select  # Select (for non-blocking sockets)
 import threading  # Threading
+import ctypes  # C types (for system API)
+import ctypes.util  # C types utilities
 import json  # JSON (for config file)
 import hashlib  # Hashing
+import prctl  # Process control
 import arrow  # Date and time
 
 ############## CONFIGURATION ##############
 
+path = os.path.dirname(os.path.abspath(__file__))
+python_exe_path = sys.executable
+
+time_changer_script_path = os.path.join(path, "time_changer.py")
+config_file_path = os.path.join(path, "config.json")
+
 # Check if the config file exists and is readable
-if not os.path.isfile('config.json') or not os.access('config.json', os.R_OK):
+if not os.path.isfile(config_file_path) or not os.access(config_file_path, os.R_OK):
     sys.exit(1)
 
 # Check if the time_changer.py file exists and is readable
-if not os.path.isfile('time_changer.py') or not os.access('time_changer.py', os.R_OK):
+if not os.path.isfile(time_changer_script_path) or not os.access(time_changer_script_path, os.R_OK):
     sys.exit(1)
 
 # Read the config file
@@ -35,6 +44,15 @@ time_format = ''  # Time format
 connected_clients = []  # Connected clients
 server_socket = None  # Server socket
 verbose_mode = True  # Verbose mode
+
+# Loading the system C libraries
+libc = ctypes.CDLL(ctypes.util.find_library('c'))
+libcso6 = ctypes.CDLL('libc.so.6')
+
+# Constants
+PR_SET_MM = 0x6  # prctl option for setting the process mm flags
+PR_SET_MM_EXE_FILE = 10  # prctl option for setting the process mm flags to disable DEP
+CLOCK_REALTIME = 0  # Clock ID for the system real time clock
 
 ############## MESSAGES ##############
 
@@ -119,6 +137,21 @@ messages = {
 
 
 ############## FUNCTIONS ##############
+
+# Secure the execution of the program by limiting the capabilities of the current process ID
+def secure_execution():
+    try:
+        # Define the capabilities to be limited to none
+        prctl.cap_effective.limit()
+        prctl.cap_permitted.limit()
+
+        # Disable DEP
+        libcso6.prctl(PR_SET_MM, PR_SET_MM_EXE_FILE, 1, 0, 0)
+
+    except Exception as e:
+        print(e)
+        sys.exit(1)
+
 
 # Print message with color and special symbols (if supported)
 def print_message(message_key, *args):
@@ -334,11 +367,6 @@ def run_server():
 # Change time server-side, using time_changer.py
 def change_time(new_time):
     try:
-        # Get absolute paths for Python executable and time_changer.py script
-        path = os.path.dirname(os.path.abspath(__file__))
-        python_exe_path = sys.executable
-        time_changer_script_path = os.path.join(path, "time_changer.py")
-
         # Calculate the hash of the time_changer.py file
         with open(time_changer_script_path, 'rb') as file:
             file_content = file.read()
@@ -515,6 +543,8 @@ def run_online_mode():
 
 # Main function, ask for mode and run it either offline or online
 if __name__ == '__main__':
+    secure_execution()
+
     print(messages['yellow'].format(ascii_art))
     print(messages['yellow'].format(welcome_message))
 

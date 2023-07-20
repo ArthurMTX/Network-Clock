@@ -61,3 +61,19 @@ All of those packages are needed to run the code :
 - [x] Removed send_message_to_clients() and print_message_to_clients()
 - [x] Removed prompt_mode_selection() and starting both offline and online mode at the same time
 - [x] Added config.json
+
+### Fixes in 2.0
+
+#### About arrow
+
+Arrow is way more efficient than datetime, it's also more secure. \
+Used multiple scan tools such as Snyk and Bandit to check for vulnerabilities. \
+Arrow is also more efficient in terms of code, it's way more readable and easier to use. 
+
+- [x] Changed the way of changing the time
+- [x] Calling secure_execution() earlier
+- [x] Added DEP 
+- [x] Added full path and hash check when calling config.json
+- [x] Revoked privileges in main.py
+- [x] Removed sys.exit(1) in secure_execution()
+- [x] Removed sys.exit(1) in change_time()
