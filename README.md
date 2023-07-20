@@ -26,6 +26,8 @@ All of those packages are needed to run the code :
  - json (JSON)
  - hashlib (Hashing)
  - prctl (Process control for Linux)
+ - jsonschema (JSON Schema validation)
+ - ctypes (Ctypes)
 
 ## Commands
 
@@ -78,3 +80,4 @@ Arrow is also more efficient in terms of code, it's way more readable and easier
 - [x] Removed sys.exit(1) in secure_execution()
 - [x] Removed sys.exit(1) in change_time()
 - [x] Updated receive_data() to read chunks of data instead of pieces of text
+- [x] Added jsonschema to validate config.json

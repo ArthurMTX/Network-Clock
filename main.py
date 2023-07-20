@@ -1,17 +1,17 @@
 ############## IMPORTS ##############
 
+import ctypes.util  # C types utilities
+import hashlib  # Hashing
+import json  # JSON (for config file)
 import os  # OS
-import sys  # System
+import select  # Select (for non-blocking sockets)
 import socket  # Socket
 import subprocess  # Run commands
-import select  # Select (for non-blocking sockets)
+import sys  # System
 import threading  # Threading
-import ctypes  # C types (for system API)
-import ctypes.util  # C types utilities
-import json  # JSON (for config file)
-import hashlib  # Hashing
-import prctl  # Process control
 import arrow  # Date and time
+import prctl  # Process control
+from jsonschema import validate  # JSON schema validation
 
 ############## CONFIGURATION ##############
 
@@ -20,6 +20,7 @@ python_exe_path = sys.executable
 
 time_changer_script_path = os.path.join(path, "time_changer.py")
 config_file_path = os.path.join(path, "config.json")
+config_file_schema_path = os.path.join(path, "config_schema.json")
 
 # Check if the config file exists and is readable
 if not os.path.isfile(config_file_path) or not os.access(config_file_path, os.R_OK):
@@ -29,9 +30,27 @@ if not os.path.isfile(config_file_path) or not os.access(config_file_path, os.R_
 if not os.path.isfile(time_changer_script_path) or not os.access(time_changer_script_path, os.R_OK):
     sys.exit(1)
 
+# Check the integrity of the config file and load it
+def load_config(file_path):
+    with open(file_path, 'r') as config_file:
+        config_data = json.load(config_file)
+
+    # Load the schema
+    with open(config_file_schema_path, 'r') as schema_file:
+        schema = json.load(schema_file)
+
+    # Validate the config file against the schema
+    validate(config_data, schema)
+
+    return config_data
+
+
 # Read the config file
-config_file = open("config.json", "r")
-config = json.load(config_file)
+try:
+    config = load_config(config_file_path)
+except Exception as e:
+    print(e)
+    sys.exit(1)
 
 port = config["port"]  # Port
 max_connections = config["max_connections"]  # Max connections (server)
@@ -373,17 +392,18 @@ def verify_file_integrity(file_path, expected_hash):
     with open(file_path, "rb") as file:
         file_content = file.read()
         actual_hash = hashlib.sha256(file_content).hexdigest()
+        print(actual_hash)
         return actual_hash == expected_hash
 
 
 # Change time server-side, using time_changer.py
 def change_time(new_time):
     try:
-         # Compare the hash of the time_changer.py file with the stored hash
-        if not verify_file_integrity(time_changer_script_path, time_changer_hash):
-            # Construct the command to execute time_changer.py
-            command = 'sudo "{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
+        # Construct the command to execute time_changer.py
+        command = 'sudo "{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
 
+        # Compare the hash of the time_changer.py file with the stored hash
+        if verify_file_integrity(time_changer_script_path, time_changer_hash):
             # Execute command
             subprocess.call(command, shell=True)
 

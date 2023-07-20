@@ -1,0 +1,10 @@
+{
+    "type": "object",
+    "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "max_connections": {"type": "integer", "minimum": 1},
+        "default_time_format": {"type": "string"}
+    },
+    "required": ["port", "max_connections", "default_time_format"],
+    "additionalProperties": false
+}
