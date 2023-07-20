@@ -180,15 +180,20 @@ class ClientHandler(threading.Thread):
 
     # Read data from client and return when newline is received
     def receive_data(self):
-        try:
-            received_data = self.client_socket.recv(1024).decode('utf-8').strip()
-            return received_data
-        except OSError as e:
-            # Error 10038 - socket closed or disconnected
-            if e.errno == 10038:
-                print_message('error', messages['cant_decode'])
-            else:
-                raise e
+        # Variable to store received data
+        data = b''
+        while True:
+            # Receive data in chunks
+            chunk = self.client_socket.recv(1024)
+            if not chunk:
+                # If no more data is received, the client disconnected
+                raise ConnectionResetError
+
+            data += chunk
+            if b'\n' in data:
+                # If we have a complete message (ending with '\n'), return it
+                message, _, data = data.partition(b'\n')
+                return message.decode('utf-8').strip()
 
     # Send time to client in given format (or default if not provided)
     def send_current_time(self):
@@ -364,16 +369,18 @@ def run_server():
     open_socket_thread.join()
 
 
+def verify_file_integrity(file_path, expected_hash):
+    with open(file_path, "rb") as file:
+        file_content = file.read()
+        actual_hash = hashlib.sha256(file_content).hexdigest()
+        return actual_hash == expected_hash
+
+
 # Change time server-side, using time_changer.py
 def change_time(new_time):
     try:
-        # Calculate the hash of the time_changer.py file
-        with open(time_changer_script_path, 'rb') as file:
-            file_content = file.read()
-            hash_value = hashlib.sha256(file_content).hexdigest()
-
-        # Compare the hash of the time_changer.py file with the stored hash
-        if hash_value == time_changer_hash:
+         # Compare the hash of the time_changer.py file with the stored hash
+        if not verify_file_integrity(time_changer_script_path, time_changer_hash):
             # Construct the command to execute time_changer.py
             command = 'sudo "{}" "{}" {}'.format(python_exe_path, time_changer_script_path, new_time)
 
@@ -541,7 +548,6 @@ def run_online_mode():
     server_thread.join()
 
 
-# Main function, ask for mode and run it either offline or online
 if __name__ == '__main__':
     secure_execution()
 
