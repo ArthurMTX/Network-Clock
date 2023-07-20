@@ -57,7 +57,7 @@ max_connections = config["max_connections"]  # Max connections (server)
 default_time_format = config["default_time_format"]  # Default time format
 
 # Hash value of the time_changer.py file (to check if it was modified)
-time_changer_hash = "ec4c6a1b1f2469d400a0f44ed6d3ca7adb69302feb7710b238d86db3ab6730a2"
+time_changer_hash = "cec6169c8f3d2b8b20785623049c6b58d0536d28ab545a60c741c78998889981"
 
 time_format = ''  # Time format
 connected_clients = []  # Connected clients
@@ -392,7 +392,6 @@ def verify_file_integrity(file_path, expected_hash):
     with open(file_path, "rb") as file:
         file_content = file.read()
         actual_hash = hashlib.sha256(file_content).hexdigest()
-        print(actual_hash)
         return actual_hash == expected_hash
 
 
