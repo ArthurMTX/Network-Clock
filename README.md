@@ -11,7 +11,7 @@ To start it, you need to open two terminals (on PowerShell), one for the server 
 
 ### Client
 
-``telnet <ip> 1234``
+``telnet <ip> <port>``
 
 ## Packages
 
@@ -21,7 +21,6 @@ All of those packages are needed to run the code :
  - arrow (Date and time)
  - socket (Socket)
  - subprocess (Run commands)
- - select (for non-blocking sockets)
  - threading (for multi-threading)
  - json (JSON)
  - hashlib (Hashing)
@@ -81,3 +80,10 @@ Arrow is also more efficient in terms of code, it's way more readable and easier
 - [x] Removed sys.exit(1) in change_time()
 - [x] Updated receive_data() to read chunks of data instead of pieces of text
 - [x] Added jsonschema to validate config.json
+
+### Fixes in 3.0
+
+- [x] Removed sys.exit(1) in secure_execution() in main.py
+- [x] Reworked handle_client_connection() to use receive_data() instead of select
+- [x] Removed select in imports
+

@@ -13,8 +13,8 @@ libc = ctypes.CDLL(ctypes.util.find_library('c'))
 libcso6 = ctypes.CDLL('libc.so.6')
 
 # Constants
-PR_SET_MM = 0x6  # prctl option for setting the process mm flags
-PR_SET_MM_EXE_FILE = 10  # prctl option for setting the process mm flags to disable DEP
+PR_SET_MM = 0x6  # prctl option for setting the process mm (memory management) flags
+PR_SET_MM_EXE_FILE = 10  # prctl option for setting the process mm (memory management) flags to disable DEP
 CLOCK_REALTIME = 0  # Clock ID for the system real time clock
 
 
@@ -47,7 +47,7 @@ def secure_execution():
     prctl.cap_effective.limit(prctl.CAP_SYS_TIME)
     prctl.cap_permitted.limit(prctl.CAP_SYS_TIME)
 
-    # Disable DEP
+    # Enable DEP
     libcso6.prctl(PR_SET_MM, PR_SET_MM_EXE_FILE, 1, 0, 0)
 
 

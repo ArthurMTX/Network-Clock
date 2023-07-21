@@ -4,7 +4,6 @@ import ctypes.util  # C types utilities
 import hashlib  # Hashing
 import json  # JSON (for config file)
 import os  # OS
-import select  # Select (for non-blocking sockets)
 import socket  # Socket
 import subprocess  # Run commands
 import sys  # System
@@ -29,6 +28,7 @@ if not os.path.isfile(config_file_path) or not os.access(config_file_path, os.R_
 # Check if the time_changer.py file exists and is readable
 if not os.path.isfile(time_changer_script_path) or not os.access(time_changer_script_path, os.R_OK):
     sys.exit(1)
+
 
 # Check the integrity of the config file and load it
 def load_config(file_path):
@@ -57,7 +57,7 @@ max_connections = config["max_connections"]  # Max connections (server)
 default_time_format = config["default_time_format"]  # Default time format
 
 # Hash value of the time_changer.py file (to check if it was modified)
-time_changer_hash = "cec6169c8f3d2b8b20785623049c6b58d0536d28ab545a60c741c78998889981"
+time_changer_hash = "e6dce9a2ece657308ea4c947f8380d17de906635d341f1c772d2977a3f00cba0"
 
 time_format = ''  # Time format
 connected_clients = []  # Connected clients
@@ -69,8 +69,8 @@ libc = ctypes.CDLL(ctypes.util.find_library('c'))
 libcso6 = ctypes.CDLL('libc.so.6')
 
 # Constants
-PR_SET_MM = 0x6  # prctl option for setting the process mm flags
-PR_SET_MM_EXE_FILE = 10  # prctl option for setting the process mm flags to disable DEP
+PR_SET_MM = 0x6  # prctl option for setting the process mm (memory management) flags
+PR_SET_MM_EXE_FILE = 10  # prctl option for setting the process mm (memory management) flags to disable DEP
 CLOCK_REALTIME = 0  # Clock ID for the system real time clock
 
 ############## MESSAGES ##############
@@ -159,17 +159,12 @@ messages = {
 
 # Secure the execution of the program by limiting the capabilities of the current process ID
 def secure_execution():
-    try:
-        # Define the capabilities to be limited to none
-        prctl.cap_effective.limit()
-        prctl.cap_permitted.limit()
+    # Define the capabilities to be limited to none
+    prctl.cap_effective.limit()
+    prctl.cap_permitted.limit()
 
-        # Disable DEP
-        libcso6.prctl(PR_SET_MM, PR_SET_MM_EXE_FILE, 1, 0, 0)
-
-    except Exception as e:
-        print(e)
-        sys.exit(1)
+    # Enable DEP
+    libcso6.prctl(PR_SET_MM, PR_SET_MM_EXE_FILE, 1, 0, 0)
 
 
 # Print message with color and special symbols (if supported)
@@ -293,33 +288,31 @@ class ClientHandler(threading.Thread):
                 # Try to read action from client
                 try:
                     # If action received, handle it
-                    if select.select([self.client_socket], [], [], 0)[0]:
-                        # Read one character from client
-                        char = self.client_socket.recv(1024).decode('utf-8').strip()
+                    command = self.receive_data()
 
-                        # If command is enter or return, ignore it
-                        if char == '\r' or char == '\n':
-                            continue
+                    # If command is enter or return, ignore it
+                    if command == '\r' or command == '\n':
+                        continue
 
-                        # Existing commands
-                        commands = {
-                            'c': self.handle_change_format,
-                            'q': self.handle_disconnect,
-                            'h': self.handle_help,
-                            't': self.send_current_time,
-                        }
+                    # Existing commands
+                    commands = {
+                        'c': self.handle_change_format,
+                        'q': self.handle_disconnect,
+                        'h': self.handle_help,
+                        't': self.send_current_time,
+                    }
 
-                        # Link between character and function
-                        # If character is not in commands, send error message to client
-                        # If character is in commands, execute the function
-                        commands_func = commands.get(char)
-                        if commands_func is not None:
-                            commands_func()
-                            if char == 'q':
-                                return
-                        else:
-                            error_msg = ' : ' + messages['invalid_action'].format(char)
-                            self.client_socket.send('{}\r\n'.format(error_msg).encode('utf-8'))
+                    # Link between character and function
+                    # If character is not in commands, send error message to client
+                    # If character is in commands, execute the function
+                    commands_func = commands.get(command)
+                    if commands_func is not None:
+                        commands_func()
+                        if command == 'q':
+                            return
+                    else:
+                        error_msg = ' : ' + messages['invalid_action'].format(command)
+                        self.client_socket.send('{}\r\n'.format(error_msg).encode('utf-8'))
                 except OSError as e:
                     # Error 10038 - socket closed or disconnected
                     if e.errno == 10038:
